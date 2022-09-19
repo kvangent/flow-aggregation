@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 
 	"github.com/gorilla/mux"
 )
@@ -27,6 +28,9 @@ func NewService(ctx context.Context, addr string) (*Service, error) {
 	s.r = mux.NewRouter()
 	s.r.HandleFunc("/", HelloWorldHandler)
 	s.r.Path("/flows").Methods("POST").HandlerFunc(handlerWithSvc(s, FlowsPOST))
+	s.r.Path("/flows").Methods("GET").HandlerFunc(handlerWithSvc(s, FlowsGET))
+
+	s.c = NewMemoryController()
 
 	lc := net.ListenConfig{}
 	var err error
@@ -87,11 +91,51 @@ func FlowsPOST(s *Service, w http.ResponseWriter, r *http.Request) {
 	// commit flows using the controller
 	if err := s.c.FlowAggregate(ctx, f); err != nil {
 		log.Printf("error: unable to update flows in datasource: %v", err)
-		http.Error(w, "server errro while aggregating flows", http.StatusInternalServerError)
+		http.Error(w, "server err connecting to datasource", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("POST: added %d flows to aggregate\n", len(f))
+	w.WriteHeader(http.StatusOK)
+}
+
+// FlowsGET returns the currently aggregated flows for a specified hour.
+func FlowsGET(s *Service, w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	// retrieve "hour" query param
+	hStr := r.URL.Query().Get("hour")
+	if hStr == "" {
+		log.Printf("error: request missing hour")
+		http.Error(w, "query-param 'hour' must be set to an int", http.StatusBadRequest)
+		return
+	}
+	// convert to int
+	h, err := strconv.Atoi(hStr)
+	if err != nil {
+		log.Printf("error: couldn't parse hour as int: %v", err)
+		http.Error(w, fmt.Sprintf("%q could not be parsed as int", h), http.StatusBadRequest)
 		return
 	}
 
+	f, err := s.c.FlowReadHour(ctx, h)
+	if err != nil {
+		log.Printf("error: unable to read flows from datasource: %v", err)
+		http.Error(w, "server err connecting to datasource", http.StatusInternalServerError)
+		return
+	}
+
+	b, err := json.Marshal(f)
+	if err != nil {
+		log.Printf("error: unable to serialize flows: %v", err)
+		http.Error(w, "server encountered unexpected error", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("GET(%d): returned %d flows", h, len(f))
+
 	w.WriteHeader(http.StatusOK)
+	w.Header().Add("Content-Type", "application/json")
+	w.Write(b)
 }
 
 // handlerWithSvc is a helper function to convert a handler that takes a service
