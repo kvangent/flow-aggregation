@@ -95,7 +95,6 @@ func TestMemoryController(t *testing.T) {
 			},
 			[]Flow{
 				NewFlow("vpc-0", "foo", "bar", 1, 100, 500),
-				NewFlow("vpc-0", "foo", "bar", 2, 100, 500),
 			},
 		},
 	}
@@ -110,13 +109,12 @@ func TestMemoryController(t *testing.T) {
 				t.Fatalf("error during Aggregate: %v", err)
 			}
 
-			got, err := c.FlowReadAll(ctx)
+			got, err := c.FlowReadHour(ctx, 1)
 			if err != nil {
 				t.Fatalf("error during ReadAll: %v", err)
 			}
 			if !equalsUnordered(tc.want, got) {
 				t.Fatalf("ReadAll returned unexpected result: got %v, want %v", got, tc.want)
-
 			}
 		})
 	}

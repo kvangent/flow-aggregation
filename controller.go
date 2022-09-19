@@ -12,13 +12,13 @@ type Flow struct {
 }
 
 // NewFlow intializes a new Flow struct.
-func NewFlow(vpcID, srcApp, destApp string, hour uint64, bytesTx, bytesRx uint64) Flow {
+func NewFlow(vpcID, srcApp, destApp string, hour int, bytesTx, bytesRx uint64) Flow {
 	return Flow{
 		flowUnique{
 			VpcID: vpcID, SrcApp: srcApp, DestApp: destApp, Hour: hour,
 		},
 		flowCumlative{
-			BytesTx: bytesTx, BytesRx: 500,
+			BytesTx: bytesTx, BytesRx: bytesRx,
 		},
 	}
 }
@@ -28,7 +28,7 @@ type flowUnique struct {
 	VpcID   string `json:"vpc_id"`
 	SrcApp  string `json:"src_app"`
 	DestApp string `json:"dest_app"`
-	Hour    uint64 `json:"hour"`
+	Hour    int    `json:"hour"`
 }
 
 type flowCumlative struct {
@@ -39,7 +39,7 @@ type flowCumlative struct {
 // Controller provides a common abstration for interacting with a datasource.
 type Controller interface {
 	FlowAggregate(context.Context, []Flow) error
-	FlowReadAll(context.Context) ([]Flow, error)
+	FlowReadHour(context.Context, int) ([]Flow, error)
 }
 
 // MemoryController is a an implementation of Controller that only persists in
@@ -75,13 +75,15 @@ func (m *MemoryController) FlowAggregate(ctx context.Context, fs []Flow) error {
 	return nil
 }
 
-func (m *MemoryController) FlowReadAll(ctx context.Context) ([]Flow, error) {
+func (m *MemoryController) FlowReadHour(ctx context.Context, h int) ([]Flow, error) {
 	// TODO: lock doesn't respect ctx
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]Flow, 0, len(m.data))
 	for _, f := range m.data {
-		out = append(out, f)
+		if f.Hour == h {
+			out = append(out, f)
+		}
 	}
 	return out, nil
 }
